@@ -71,7 +71,7 @@ Browser ──► Vercel (Next.js App Router)
 ├─ content/seed.json  content/images.md
 ├─ public/images/…                    # seed photos (SEO file names)
 ├─ e2e/ (playwright)   tests/ (vitest, convex-test)
-└─ next.config.ts  middleware.ts or proxy.ts (whichever the current Next.js major uses)
+└─ next.config.ts  proxy.ts (Next.js 16 renamed middleware to proxy)
 ```
 
 ## Routing, old-URL redirects
@@ -120,7 +120,8 @@ Set `trailingSlash: false`. Crawl the live site once more before launch (`wget -
 | `RESEND_API_KEY` | Convex | Resend |
 | `RESEND_WEBHOOK_SECRET` | Convex | Delivery/bounce webhooks |
 | `EMAIL_FROM` | Convex | `Selems Hotel <bookings@selemsexclusivehotel.com>` (verify domain in Resend: SPF, DKIM, DMARC) |
-| `STAFF_ALERT_EMAILS` | Convex | Comma-separated front-desk recipients |
+| `STAFF_ALERT_EMAILS` | Convex | Comma-separated front-desk recipients (Settings → alert recipients overrides it) |
+| `RESEND_TEST_MODE` | Convex | Set to `false` in production to allow delivery to real guest addresses (default: test mode on) |
 | `JWT_PRIVATE_KEY`, `JWKS`, `SITE_URL` | Convex | Required by Convex Auth (generate per its docs) |
 | `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Vercel / Convex | Optional bot protection on booking and contact forms |
 | `NEXT_PUBLIC_GA_ID` | Vercel | Google Analytics 4 (load with `@next/third-parties`, after consent) |
@@ -131,3 +132,19 @@ Set `trailingSlash: false`. Crawl the live site once more before launch (`wget -
 - Domain: keep `selemsexclusivehotel.com` (apex) with `www` → apex redirect. Move DNS only at launch; lower TTL 48h before.
 - Email domain: verify in Resend before launch; keep any existing mailboxes' MX records intact.
 - Backups: enable Convex scheduled backups (daily) and export before each schema migration.
+
+## Decisions recorded during the build
+
+| Date | Decision |
+|---|---|
+| 2026-10-15 | Scaffolded on **Next.js 16.4.1** with `cacheComponents: true` (the create-next-app default). Public data caching uses `"use cache"` + `cacheTag()`/`cacheLife()`; `/api/revalidate` calls `revalidateTag`. Route protection lives in `proxy.ts`. |
+| 2026-10-15 | **Convex Auth providers are mounted in the `/admin` layout only**, not the root layout. `ConvexAuthNextjsServerProvider` reads cookies, which would make every public page dynamic and break static rendering (CLAUDE.md rule 1). Public client islands (availability, booking, forms) use a plain `ConvexProvider` inside the `(site)` layout. |
+| 2026-10-15 | shadcn/ui 4 (style `radix-nova`, Radix primitives). Its `form` component is replaced by `field` (use with react-hook-form + zod). Class merging comes from shadcn's `cn` package. Radius follows `--radius`: 2px on the public site, 6px under `[data-surface="admin"]`. Button variants `amber`, `line`, `light` and sizes `cta` (48px) / `cta-sm` (40px) added. |
+| 2026-10-15 | `lib/dates.ts` and `lib/money.ts` are imported by both Next.js and Convex (Convex bundles relative imports from outside `convex/`). |
+| 2026-10-15 | **Public data layer**: Server Components read Convex through `lib/data.ts` (`"use cache"` + `cacheTag` + `cacheLife("hours")` fallback). `/api/revalidate` calls `revalidateTag(tag, { expire: 0 })` so the next visit after a staff save renders fresh data (prices must not lag). |
+| 2026-10-15 | **JS budget**: Next 16 + React 19 framework JS alone is ~170 KB gzipped on an empty page, so the 120 KB total in CLAUDE.md cannot be met on this stack. Working budget was **app JS on top of the framework ≤ 40 KB gzipped**; the client then asked for framer-motion animation and the shadcn date picker/selects, so Home now loads ~71 KB of app JS (framer-motion ~34 KB, icons/components ~14 KB, shared ~20 KB). The shadcn Popover/Calendar/Select (~45 KB) are kept off the initial load by `LazyStayPicker` (a look-alike that swaps in the real picker on hover/focus/tap and opens the control clicked). To hold it, public client components avoid Radix: the mobile menu is a native `<dialog>`, FAQs are native `<details>` (answers stay in the HTML), and link-buttons use `buttonVariants` classes rather than the Slot-based `<Button asChild>`. The home availability bar uses native date inputs; the range calendar lives in the (noindex) booking flow. |
+| 2026-10-15 | **Prerendering and the clock**: Cache Components forbids reading the time while prerendering. Server code gets the year/date from cached helpers (`getYear()`); client components read "today in Lagos" via `useTodayLagos()` (client-only snapshot). |
+| 2026-10-15 | **Convex on content pages**: the room-page quote and the contact form use `ConvexHttpClient` loaded on first use (`lib/convex-http.ts`), so content pages ship no Convex code and open no websocket. Only `/book` and `/booking/[ref]` mount the live `ConvexReactClient` (real-time availability). |
+| 2026-10-15 | **Fixed elements and the page transition**: `app/(site)/template.tsx` animates a transform, which makes `position: fixed` descendants position relative to it. Fixed UI inside pages (room-page bottom bar) is portalled to `<body>`; it caused CLS 0.087 before. |
+| 2026-10-15 | **Fonts**: Cormorant Garamond is loaded at weight 600 only (no italic) and Instrument Sans as one variable font; earlier builds shipped 12 font files. Share images use static TTFs in `assets/fonts/`. |
+| 2026-10-15 | **Accessibility and image health** are enforced by `e2e/a11y-and-images.spec.ts` (axe, WCAG 2.2 AA; every image decodes; alt present; one h1) on every public page, desktop and phone. Links inside running text are underlined (WCAG 1.4.1). |

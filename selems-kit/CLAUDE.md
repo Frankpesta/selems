@@ -49,18 +49,22 @@ Before using any library API, check its current docs (package README or official
 9. **Performance budget (mobile, 4G):** LCP < 2.0 s, CLS < 0.05, INP < 200 ms, JS on public pages < 120 KB gzipped. Check with Lighthouse in CI.
 10. British/Nigerian English spelling in copy ("favourites", "centre").
 
-## Commands (fill in as you scaffold)
+## Commands
 
 ```bash
-pnpm dev            # next dev + convex dev (use concurrently)
+pnpm dev            # next dev + convex dev (concurrently)
+pnpm dev:next       # Next.js only
+pnpm dev:convex     # Convex only
 pnpm build
 pnpm lint
-pnpm typecheck
-pnpm test           # vitest (unit) + convex-test
-pnpm e2e            # playwright
+pnpm typecheck      # next typegen && tsc --noEmit
+pnpm test           # vitest: "unit" project (lib/, tests/) + "convex" project (convex/**/*.test.ts, edge-runtime)
+pnpm e2e            # playwright against `next start` (run pnpm build first); desktop + 390px phone
 npx convex run seed:all          # load content/seed.json
 npx convex run users:bootstrapAdmin '{"email":"…"}'   # first admin
 ```
+
+Versions in use: Next.js 16.4.1 (Cache Components on, `proxy.ts`), React 19.3, Tailwind 4.3, shadcn 4 (radix-nova), Convex 1.46, Vitest 5, Playwright 1.64. Read `AGENTS.md` and `node_modules/next/dist/docs/` before writing Next.js code. Build-time decisions are logged at the end of docs/03.
 
 ## Conventions
 

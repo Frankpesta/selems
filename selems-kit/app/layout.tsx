@@ -1,13 +1,13 @@
 import type { Metadata, Viewport } from "next";
-import { Bodoni_Moda, Instrument_Sans } from "next/font/google";
+import { Cormorant_Garamond, Instrument_Sans } from "next/font/google";
 import "./globals.css";
 
-const bodoni = Bodoni_Moda({
+const cormorant = Cormorant_Garamond({
   subsets: ["latin"],
-  style: ["normal", "italic"],
-  axes: ["opsz"],
+  weight: ["600"], // the only display weight in use; one font file
+  style: ["normal"],
   display: "swap",
-  variable: "--font-bodoni",
+  variable: "--font-cormorant",
 });
 
 const instrument = Instrument_Sans({
@@ -36,7 +36,7 @@ export const viewport: Viewport = {
 // Convex Auth providers live in the /admin layout only (docs/03).
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en-NG" className={`${bodoni.variable} ${instrument.variable}`}>
+    <html lang="en-NG" className={`${cormorant.variable} ${instrument.variable}`}>
       <body className="min-h-dvh">{children}</body>
     </html>
   );

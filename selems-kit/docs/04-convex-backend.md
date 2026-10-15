@@ -393,3 +393,41 @@ Every guest email shows: hotel name, ref, room, dates, guests, total due at the 
 ## Seeding (`convex/seed.ts`)
 
 `internalMutation all` reads `content/seed.json` (imported as a module) and upserts by natural key (`slug`, `key`, `question`, file `src`). Idempotent: safe to run repeatedly. Room units: seed creates placeholder units per type from `seed.json.rooms[].units` (marked `[CONFIRM]`) — replace with the real room list before launch.
+
+## Schema changes during the build
+
+Recorded 2026-10-15 (Stage 1, data layer). All are additive; nothing in the original spec was removed.
+
+| Table | Change | Why |
+|---|---|---|
+| `roomTypes` | `featured: boolean` | Home "featured rooms" (docs/05); already in seed.json |
+| `roomTypes` | `slugRedirects?: string[]` | Old slugs served as 308s after a rename (docs/06) |
+| `bookings` | `viewedAt?: number` | Today → "website bookings not yet viewed" (docs/06) |
+| `bookings` | index `by_status_checkOut` | `reviewRequests` cron and departures list |
+| `pages` | `draftFields?: any` | Preview of unpublished edits (docs/06) |
+| `staffProfiles` | `lastSignInAt?: number` | Staff list "last sign-in" (docs/06) |
+| `invites` | `name?: string` | `bootstrapAdmin`/invites carry the person's name into their profile |
+| `settings` | `gbpNap?: string`, `staffAlertEmails?: string[]` | SEO health NAP check and Settings "alert recipients" (docs/06); env `STAFF_ALERT_EMAILS` is the fallback |
+| `offers` | `updatedAt?: number` | Sitemap `lastModified` (docs/07) |
+| `inquiries` | `notes?: string` | Internal notes on an inquiry (docs/06) |
+| `faqs`, `facilities`, `galleryImages` | indexes `by_question`, `by_title`, `by_src` | Idempotent seeding by natural key |
+
+## Implementation notes (Stage 1)
+
+- **Invite-only sign-up** is enforced in Convex Auth's `afterUserCreatedOrUpdated` callback (`convex/auth.ts` → `claimInvite`). It runs inside the account-creation mutation, so throwing `FORBIDDEN` rolls the new user back. (The Password provider's `profile` hook is synchronous and cannot query invites.)
+- **Seeding** (`convex/seed.ts`): default mode inserts missing rows only and never overwrites edits staff made; `'{"overwrite":true}'` refreshes existing rows from seed.json; `'{"units":false}'` skips the development room units. Room units come from `seed.json.devUnits`. Offers and gallery items reference room types by slug; the seed resolves them to IDs.
+- **Seed images**: alt text and dimensions come from `content/images.json`, generated from `content/images.md` by `node scripts/build-image-manifest.mjs` (Convex can import JSON, not markdown). Re-run it after editing the manifest.
+- **[CONFIRM] content**: room types, offers, facilities, FAQs and gallery items containing a `[CONFIRM]` marker are seeded with `published: false`. Page copy (`pages.fields`) keeps its markers so staff can see what is outstanding; public queries must pass fields through `stripUnconfirmed` (`convex/lib/content.ts`).
+- **2026-10-15, client decision ("publish everything"):** the held-back items were reworded so they no longer claim unconfirmed specifics, and published: Penthouse (location claims removed), the long-weekend offer (terms written from its own fields), the check-in/out and cancellation FAQs (no times or policy stated), power/security/laundry facilities (less specific wording) and the dining menu descriptions. Page slots that are still bare `[CONFIRM]` (distances, opening hours, outdoor bar, directions, guide author, "Getting to Akure") stay hidden until the hotel supplies facts. These published texts should still be checked by the hotel (docs/01 open questions).
+- **Tests** for Convex live beside the code (`convex/**/*.test.ts`) and import the module map from `tests/convex-modules.ts` (kept outside `convex/` so it is never deployed).
+
+## Implementation notes (Stage 2, booking engine)
+
+- **Files:** `convex/booking.ts` (`internal.booking.create`, the only writer of website bookings), `convex/public/booking.ts` (`search`, `quote`, `reserve`, `forGuest`, `cancelByGuest`), `convex/lib/{stays,bookings,rateLimits,turnstile,images,email}.ts`, `convex/emailData.ts`, `convex/emails.tsx` ("use node"), templates in `emails/`.
+- **Manage token** is generated in the `reserve` action (real randomness), passed to `create`, which stores only `sha256(token)` and schedules the confirmation email with the raw token (needed for the link). `forGuest` hashes even for unknown refs and compares in constant time; wrong ref and wrong token look identical (`null` / `NOT_FOUND`).
+- **Offers apply automatically**: `bestPrice` (lib/stays.ts) applies any published offer the stay qualifies for when it is cheaper than the nightly rates. `search`, `quote` and `create` all use it, so the guest always books at the price they were shown. A `?offer=` URL param only affects presentation.
+- **Queries return `{ ok: false, error }`** for invalid stays (instead of throwing) so `useQuery` UIs can show the message; mutations/actions throw `ConvexError` with a stable `code` and, for input errors, the `field`.
+- **Guest self-cancel deadline**: `checkIn` at `checkInTime` (Lagos; midnight if unset) minus `freeCancellationHours` (0 if unset). Cancelling frees occupancy and emails guest + staff.
+- **Rate limits** (`convex/lib/rateLimits.ts`): reserve 5/hour per email, 5/hour per phone, 20/hour per IP, 60/min global; guest cancel 10/hour per ref; inquiries 3/hour per email, 10/hour per IP. Client IP comes from `ctx.meta.getRequestMetadata()`.
+- **Email** (`convex/lib/email.ts`): while `RESEND_API_KEY` is missing or starts with `re_placeholder`, emails are not sent; the booking history records `email_skipped`. Resend test mode stays on unless `RESEND_TEST_MODE=false`. Staff recipients: Settings `staffAlertEmails`, else `STAFF_ALERT_EMAILS`, else the booking mailbox. Delivery webhooks: `POST /resend-webhook` on the deployment's `.convex.site` URL.
+- **Search ordering**: published room types in the hotel's order, with sold-out and too-small types moved to the end (`available: 0`).

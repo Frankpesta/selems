@@ -4,7 +4,7 @@ The approved screens live on the design canvas ("Selems Hotel Redesign") and the
 
 ## Direction: "Ijapo Slate & Amber"
 
-Colours come from the hotel itself: the deep navy "E" in the logo and the slate-blue walls of the building, the logo's orange deepened to an amber that passes contrast, and the green velvet headboards in the suites. A high-contrast Didone display face (Bodoni Moda) gives the international-hotel register; a clean grotesque (Instrument Sans) carries everything else. Square corners (2px radius) on public UI; slightly softer (4–6px) in admin. Real photography does the emotional work, so ornament stays minimal.
+Colours come from the hotel itself: the deep navy "E" in the logo and the slate-blue walls of the building, the logo's orange deepened to an amber that passes contrast, and the green velvet headboards in the suites. A classical display serif (Cormorant Garamond, weight 600, lining figures) gives the international-hotel register; a clean grotesque (Instrument Sans) carries everything else. (Changed from Bodoni Moda on 2026-10-15 at the client's request: Bodoni's hairlines and narrow figures read poorly at card and price sizes.) Square corners (2px radius) on public UI; slightly softer (4–6px) in admin. Real photography does the emotional work, so ornament stays minimal.
 
 ## Tokens (Tailwind v4 `@theme` in `app/globals.css`)
 
@@ -33,7 +33,7 @@ Colours come from the hotel itself: the deep navy "E" in the logo and the slate-
   --color-info: #24527A; --color-info-bg: #E2EAF2;
 
   /* type */
-  --font-display: "Bodoni Moda", Didot, "Bodoni 72", Georgia, serif;
+  --font-display: "Cormorant Garamond", Garamond, Georgia, serif;  /* next/font, weights 500–700 */
   --font-sans: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
 
   /* radius */
@@ -43,7 +43,7 @@ Colours come from the hotel itself: the deep navy "E" in the logo and the slate-
 
 Map shadcn's CSS variables (`--background`, `--foreground`, `--primary`, `--ring`, `--border`, …) onto these tokens so shadcn components inherit the palette. The public site is light-only by design; the admin may add a dark mode later (not in scope).
 
-Load fonts with `next/font/google` (`Bodoni_Moda` with `opsz` axis, weights 400–700 + italic; `Instrument_Sans` 400–700), `display: 'swap'`, exposed as CSS variables.
+Load fonts with `next/font/google` (`Cormorant_Garamond` weight 600 only; `Instrument_Sans` 400–700), `display: 'swap'`, exposed as CSS variables. Display sizes run ~10% above the original scale (hero clamp(48px, 6.6vw, 92px), page H1 clamp(44px, 5.5vw, 74px), section H2 52px / 36px, card H3 28px) to suit Cormorant's smaller x-height.
 
 ## Type scale
 
@@ -90,7 +90,18 @@ Icons: `lucide-react`, stroke 1.5, never emoji.
 
 ## Motion
 
-Restrained. Images fade in on load (150ms). Sticky header gains a hairline shadow after scroll. Hover on room cards: image scales 1.02 over 400ms. No scroll-triggered reveals that hide content at rest. Everything disabled under `prefers-reduced-motion`.
+Animated with **framer-motion** (client request, 2026-10-15), loaded through `LazyMotion` + `domAnimation` (`m.*` components only) inside `MotionProvider` (`components/motion`). One motion language (`components/motion/tokens.ts`): expo-out easing, 0.9s reveals, 0.08s stagger.
+
+- **Hero** (`HeroRise`, `HeroImage`): eyebrow, H1, lede, buttons and the availability bar settle upward in sequence; hero photos ease from 1.12× scale. Transform only: nothing starts invisible, so LCP is unaffected.
+- **Scroll reveals** (`Reveal`): fade-and-rise as content enters the viewport, staggered in grids. Server HTML is fully visible; only elements that start below the fold at hydration are hidden (while off-screen) and revealed. No-JS visitors and crawlers see everything.
+- **Parallax** (`Parallax`): offer, dining and exterior photos drift slightly on scroll inside a clipping frame.
+- **Count-up** (`CountUp`): fact figures count up on first view.
+- **Smart header**: hides on scroll down past 320px, returns on scroll up or keyboard focus.
+- **Page transitions**: `app/(site)/template.tsx` settles each page 12px on navigation (transform only).
+- **CSS micro-interactions**: button press, room-card lift on hover, FAQ answers open smoothly (`::details-content`), mobile book bar and WhatsApp button glide in.
+- `MotionConfig reducedMotion="user"` plus the global `prefers-reduced-motion` CSS turn all of it off for visitors who ask.
+
+Images inside cropped or parallax frames need `sizes` larger than the frame (≈ frame height × photo aspect ratio × parallax scale), or they render soft.
 
 ## Admin look
 
@@ -121,3 +132,8 @@ The canvas board names map to routes:
 3. Room sizes appear only when real values exist.
 4. Brackets like `[2:00 PM]` on the canvas are placeholders: pull real values from Settings, and hide the line if unset.
 5. Admin screens show sample guests and figures for layout only.
+
+## Logo and icons (2026-10-15)
+
+- The header uses the hotel's full logo lockup (`public/images/selems-logo.png`, via `components/site/Logo.tsx`, 40px tall on phones, 52px from 560px) instead of the text wordmark, on every header (site, booking, 404). The lockup has its own white and black panels; a transparent or single-colour version from the hotel would sit more cleanly on the dark home header.
+- Favicon, app icon and Apple touch icon (`app/favicon.ico`, `app/icon.png`, `app/apple-icon.png`) are the SE monogram cropped from the logo (the buffalo's horn removed), on white. Regenerate with `node scripts/build-icons.cjs . <preview-dir>` if the logo changes.
